@@ -1,0 +1,182 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Globals:
+  Function:
+    Runtime: python3.9
+    Handler: app.lambda_handler
+    Timeout: 900
+
+Description: >
+  This removes all default VPCs in all regions for a newly created account.
+
+Parameters:
+  RoleToAssume:
+    Type: String
+    Description: The role to assume in other accounts. Must be SCP-exempt.
+      Use AWSControlTowerExecution under CT, OrganizationAccountAccessRole otherwise.
+    Default: 'AWSControlTowerExecution'
+
+  AccountCreatedTopicArn:
+    Type: String
+    Description: The ARN of the new-account-created SNS Topic
+    Default: arn:aws:sns:eu-xxxxx-1:111111111111:new-account-created
+
+  AccountCreatedTopicArnRegion:
+    Type: String
+    Description: The region where the AccountCreatedTopicArn resides (same as in the ARN string)
+    Default: eu-xxxxx-1
+
+# ------------------------------------------------------------------------------
+
+Resources:
+  TriggerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/trigger/
+      Events:
+        ExternalNewAccountCreatedEvent:
+          Type: SNS
+          Properties:
+            Topic: !Ref AccountCreatedTopicArn
+            Region: !Ref AccountCreatedTopicArnRegion
+        PeriodicCleanup:
+          Type: Schedule
+          Properties:
+            Schedule: 'cron(0 6 * * ? *)'
+            Input: '{"AccountId": "ALL"}'
+      Environment:
+        Variables:
+          STATE_MACHINE_ARN: !Ref RemoveDefaultVpcsFromAccount
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - states:StartExecution
+              Resource:
+                - !Ref RemoveDefaultVpcsFromAccount
+            - Sid: MainPermissions
+              Effect: Allow
+              Action:
+                - organizations:ListAccounts
+                - ec2:DescribeRegions
+              Resource: '*'
+
+  LambdaResourcePolicy:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TriggerFunction
+      Principal: sns.amazonaws.com
+      Action: lambda:InvokeFunction
+      SourceArn: !Ref AccountCreatedTopicArn
+
+  SubscribeLambdaToSns:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: !GetAtt TriggerFunction.Arn
+      Protocol: lambda
+      TopicArn: !Ref AccountCreatedTopicArn
+      Region: !Ref AccountCreatedTopicArnRegion
+
+  # ------------------------------------------------------------------------------
+
+  RemoveDefaultVpcsFromAccount:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      DefinitionUri: statemachine/remove_default_vpcs_from_account.asl.yaml
+      DefinitionSubstitutions:
+        RemoveDefaultVpcsFunctionArn: !GetAtt RemoveDefaultVpcsFunction.Arn
+      Policies:
+        - LambdaInvokePolicy:
+            FunctionName: !Ref RemoveDefaultVpcsFunction
+
+  RemoveDefaultVpcsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/remove_default_vpcs/
+      Policies:
+        - Statement:
+            - Sid: AssumeTheRole
+              Effect: Allow
+              Action:
+                - sts:AssumeRole
+              Resource: !Sub 'arn:aws:iam::*:role/${RoleToAssume}'
+            - Sid: MainPermissions
+              Effect: Allow
+              Action:
+                - ec2:DescribeInternetGateways
+                - ec2:DetachInternetGateway
+                - ec2:DeleteInternetGateway
+                - ec2:DescribeSubnets
+                - ec2:DeleteSubnet
+                - ec2:DescribeRouteTables
+                - ec2:DeleteRouteTable
+                - ec2:DescribeNetworkAcls
+                - ec2:DeleteNetworkAcl
+                - ec2:DescribeSecurityGroups
+                - ec2:DeleteSecurityGroup
+                - ec2:DeleteVpc
+                - ec2:DescribeVpcs
+                - ec2:DescribeAvailabilityZones
+                - ec2:DescribeInstances
+              Resource: '*'
+      Environment:
+        Variables:
+          ROLE_TO_ASSUME: !Ref RoleToAssume
+
+  #-------------------------------------------------------------------------------
+  #
+  # Monitoring. For state machines, only the state machine itself should be
+  # monitored as they orchestrate the lambda functions which are expected to fail
+  # in certain circumstances without this constituting a processing failure.
+  #
+  # Lambdas not in state machines should be monitored individually.
+  #
+  # One or more CloudWatch alarms are created using the naming conventions used by
+  # the logic defined in the "all-alarms-to-sec-hub" SAM project. This will
+  # automatically create incidents and tickets in ServiceNow or Jira.
+  #
+  #-------------------------------------------------------------------------------
+
+  AlarmConfigureAccountForSecHub:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: INFRA-RemoveDefaultVpcsFromAccount-Failure-MEDIUM
+      AlarmDescription: The state machine RemoveDefaultVpcsFromAccount failed.
+      ActionsEnabled: true
+      OKActions: []
+      AlarmActions: []
+      InsufficientDataActions: []
+      MetricName: ExecutionsFailed
+      Namespace: AWS/States
+      Statistic: Sum
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref RemoveDefaultVpcsFromAccount
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+  AlarmTriggerFunction:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: INFRA-DefaultVpcRemoverTriggerFunction-MEDIUM
+      ActionsEnabled: true
+      OKActions: []
+      AlarmActions: []
+      InsufficientDataActions: []
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Statistic: Sum
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref TriggerFunction
+      Period: 60
+      EvaluationPeriods: 1
+      DatapointsToAlarm: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching

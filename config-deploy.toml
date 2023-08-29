@@ -1,0 +1,10 @@
+# Deployment configuration
+
+repo-name    = "Foundation-default-vpc-remover"
+part-of      = 'foundation'
+
+
+[SAM]
+stack-name   = "INFRA-default-vpc-remover"
+profile      = "admin-account"
+regions      = '{main-region}'

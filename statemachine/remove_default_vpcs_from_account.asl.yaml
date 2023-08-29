@@ -1,0 +1,25 @@
+Comment: A state machine that removes the default VPCs from all regions.
+StartAt: For each account
+States:
+  For each account:
+    Type: Map
+    ItemsPath: $.AccountIds
+    Parameters:
+      AccountId.$: $$.Map.Item.Value
+      Regions.$: $.Regions
+    MaxConcurrency: 1
+    Iterator:
+      StartAt: Remove All Default VPCs for an Account
+      States:
+        Remove All Default VPCs for an Account:
+          Type: Task
+          Resource: '${RemoveDefaultVpcsFunctionArn}'
+          ResultPath: $.Result
+          Retry:
+            - ErrorEquals:
+                - States.TaskFailed
+              IntervalSeconds: 2
+              MaxAttempts: 5
+              BackoffRate: 1.25
+          End: true
+    End: true
