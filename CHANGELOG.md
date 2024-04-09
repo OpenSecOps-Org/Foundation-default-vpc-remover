@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.0
+    * Upgraded to Python 3.12.
+
 ## v1.0.3
     * Refreshed deployment scripts.
 
