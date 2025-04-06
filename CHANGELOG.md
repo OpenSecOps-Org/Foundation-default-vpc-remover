@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.3
+    * File paths corrected for the new name of the installer.
+
 ## v1.1.2
     * Updated LICENSE file to MPL 2.0.
 
