@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.1
+    * Updated publish.zsh to support dual-remote publishing to CloudSecOps-Org repositories.
+
 ## v1.1.0
     * Upgraded to Python 3.12.
 
