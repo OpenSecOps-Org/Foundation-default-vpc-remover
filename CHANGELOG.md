@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.1.5
+    * Updated GitHub remote references in publish.zsh script to use only OpenSecOps-Org, removed Delegat-AB
+
 ## v1.1.4
     * Updated GitHub organization name from CloudSecOps-Org to OpenSecOps-Org.
     * Updated references to CloudSecOps-Installer to Installer.
