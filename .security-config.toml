@@ -1,0 +1,4 @@
+component_name = "Foundation-default-vpc-remover"
+converted = true
+converted_in = "v1.2.0"
+acknowledged_cves = []

@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.2.0
+    * Converted to OpenSecOps supply-chain framework: hash-pinned dependencies, signed releases, daily CVE scan, Scorecard. See `SECURITY.md`.
+    * `boto3` pinned to `1.42.94` (was `1.28.33`) per project-wide pin policy.
+
 ## v1.1.5
     * Updated GitHub remote references in publish.zsh script to use only OpenSecOps-Org, removed Delegat-AB
 

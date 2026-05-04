@@ -1,5 +1,7 @@
 # Default VPC Remover
 
+[![Daily CVE scan](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml) [![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/OpenSecOps-Org/Foundation-default-vpc-remover/badge)](https://scorecard.dev/viewer/?uri=github.com/OpenSecOps-Org/Foundation-default-vpc-remover)
+
 The default VPC created for a new account behaves slightly differently from user-created VPCs: amongst other things, their security groups are fully open. Therefore, we must remove all default VPCs in all regions for a newly created account.
 
 This lambda, deployed in the main organisation account in your main region, is triggered by the "new account SNS" topic. It runs in the org account, then assumes the OrganizationAccountAccessRole in the new account to do its work.

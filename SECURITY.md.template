@@ -1,0 +1,247 @@
+<!--
+  THIS FILE IS A TEMPLATE.
+  Do not edit the rendered <repo>/SECURITY.md directly — edit this template
+  in the Installer repo (canonical source) or the per-repo .security-config.toml
+  (per-component values), then re-run _generate-security-md.sh.
+
+  Distribution: Installer/templates/SECURITY.md.template is copied byte-identically
+  to every component repo by Installer/refresh. The local _generate-security-md.sh
+  in each repo reads this template plus <repo>/.security-config.toml and writes
+  <repo>/SECURITY.md. Idempotent — running it twice produces no diff.
+
+  Placeholder set:
+
+    {{COMPONENT_NAME}}      — auto-derived by the generator from
+                              `git remote get-url OpenSecOps`
+                              (override by setting `component_name` in the TOML).
+    {{SBOM_LOCATION}}       — derived URL pattern using {{COMPONENT_NAME}} and
+                              {{converted_in}}; not stored in the TOML.
+    {{SUPPLY_CHAIN_STATUS}} — rendered by the generator from `converted` (bool)
+                              + `converted_in` (string, e.g. "v3.0.0") in the TOML.
+    {{ACKNOWLEDGED_CVES}}   — rendered from the TOML `acknowledged_cves` array;
+                              defaults to "_None at this time._" when empty/absent.
+
+  Sections 1, 3, 8 are uniform inline prose — no placeholders, no per-repo
+  variability. The values are uniform suite-wide:
+    §1: there is no support matrix; security fixes ship as new releases.
+    §3: tiered SLA describes new-release cadence (no backports).
+    §8: every converted component gets the same L1+L2+L3-subset claim.
+
+  Sections 7, 9, 11 contain live content: the valid release-signing
+  identity list (§7), the SLSA Build L1 claim with L2-adjacent controls
+  (§9), and the customer-facing `cosign verify-blob` invocation (§11).
+  Section 4 carries a live Dependabot bullet plus a deferred poll-based
+  pointer; section 14 is filled in (Documentation-repo cross-link).
+-->
+
+# Security Policy — {{COMPONENT_NAME}}
+
+This document describes the security posture, governance model, vulnerability-reporting channel, and supply-chain assurances for the **{{COMPONENT_NAME}}** component of the OpenSecOps system. It is the single canonical reference for both supply-chain posture and governance posture; there is no separate `GOVERNANCE.md`.
+
+OpenSecOps is published as source-available under MPL-2.0. The cathedral governance model (transparent source, no external pull requests; vulnerability reports welcomed and credited) applies to all components, including this one.
+
+---
+
+## 1. Supported versions
+
+Security fixes are delivered as **new releases**. There is no patch-level support for prior releases — backporting fixes against older release lines is explicitly out of scope. A customer running an older version receives a fix by upgrading to the current release.
+
+This policy is uniform across every OpenSecOps component. It is honest about what a small core team can sustainably support, and it aligns with the cathedral governance model in §6: the core team curates one moving release line per component, and customers track it.
+
+The "Am I affected?" recipe in §13 lets a customer determine, at any point, whether their currently-deployed version is exposed to a specific CVE. The remediation, when exposed, is to upgrade to the current release.
+
+## 2. Vulnerability reporting
+
+We welcome vulnerability reports from anyone. Reporters receive named credit in the release notes for the version that ships the fix, unless they request anonymity.
+
+Preferred channel: the GitHub Security Advisory ("Report a vulnerability") flow on the relevant component repository. This produces a private advisory visible to the maintainer team.
+
+Public bug reports for non-security defects belong on the standard Issues tab; security reports must use the private channel above.
+
+External *patches* (pull requests) are not accepted under the cathedral governance model documented in §6. This applies to security and non-security changes alike. Vulnerability *reports* are an explicit carve-out and are always welcome.
+
+## 3. CVE response SLA
+
+The SLA describes the **cadence at which a fix-bearing release ships**, not patch turnaround on old versions (§1: there are no patches against old versions — fixes always ship as new releases). When a CVE is confirmed against a currently-supported release, the maintainer commits to cutting a new release within the following windows:
+
+| Severity      | Time to next release          |
+| ------------- | ----------------------------- |
+| Critical      | within **3 business days**    |
+| High          | within **10 business days**   |
+| Medium / Low  | next regular release          |
+
+Critical and high severities trigger an out-of-band release; medium and low ride the regular release cadence. The clock starts when the maintainer accepts the report as a confirmed vulnerability against current code.
+
+This SLA is uniform across every OpenSecOps component.
+
+**Severity authority** — for SLA classification only (the release gate fails on any `pip-audit` finding regardless of severity, unless the entry is on the acknowledged-and-deferred list in §12): GHSA severity is authoritative when present; otherwise NVD or OSV CVSS severity. If severity is absent, conflicting, or not yet classified, the finding is treated as **high** until manually re-classified.
+
+## 4. Continuous detection
+
+Three layers operate today:
+
+- **Release-time gate.** `./publish` runs `_check-requirements.sh --reproducible` as its first step and refuses to release if the lock has drifted from `requirements.in`, if `pip-audit` flags any CVE not on the acknowledged-and-deferred list (§12), if any pinned artefact's SHA-256 fails verification against PyPI, or if any pinned package matches the OSSF malicious-packages feed. Blocks bad bytes from shipping.
+- **Push-based detection between releases.** GitHub Dependabot alerts are enabled on every OpenSecOps repository (development and published). When GitHub's advisory database flags a vulnerable pinned dependency in any committed `requirements.txt`, an alert is created on the affected repository's Security tab and routed to the maintainer via the channels configured in their GitHub notification settings (web, mobile, CLI). Dependabot runs in **alerts-only** mode — Dependabot security updates (auto-PRs against vulnerable deps) and version updates (routine bump PRs) are explicitly disabled, consistent with the no-auto-PR-bots posture in §5. No SLA is claimed on GitHub's detection-to-notification latency; empirical latency is observed but not promised.
+- **Poll-based daily scan.** A scheduled GitHub Actions workflow (`.github/workflows/daily-scan.yml`) runs the same release-gate checks against the published locks once a day, in `--public-log` mode (sensitive details redacted from the world-readable workflow log; package names, versions, CVE IDs, and lock contents do not appear). The workflow runs with `contents: read` permission only — no write access, no auto-PR, no issue creation. A finding fails the workflow run, which surfaces as a GitHub notification to the maintainer; the response is a new release shipping the fix, consistent with §3's SLA. No SLA on detection-to-notification latency (GitHub Actions cron typically fires within 5–30 minutes of the scheduled tick).
+
+## 5. Supply-chain posture
+
+{{SUPPLY_CHAIN_STATUS}}
+
+The locked-state guarantees for converted components:
+
+- Every direct dependency is declared in a hand-edited `requirements.in` per Lambda function, with explicit version ranges.
+- Every concrete dependency (direct + transitive) is pinned in a hash-verified `requirements.txt` generated by `uv pip compile --generate-hashes`.
+- `pip` enforces the recorded SHA-256 hashes at install time inside `sam build`.
+- The release gate (§4) re-verifies hashes against PyPI before any artefact ships, so byte-tampering is caught **before** the deploy reaches a customer.
+- Pinned packages are cross-referenced against the OSSF malicious-packages feed at release-gate time; any match fails the gate with the matching `MAL-*` advisory ID.
+- Direct-dep PyPI provenance is captured in committed `requirements.provenance.json` files and re-checked at release-gate time; drift surfaces as an advisory warning for maintainer review.
+- No release-path CI for customer-facing artefact emission (release authority remains on the maintainer machine; signing happens with the maintainer's identity, see §7); no auto-PR dependency bots; updates are deliberate maintainer actions.
+
+**Externally-verifiable signals.** Two third-party signals are published continuously for this component, both surfaced as badges in the repository README:
+
+- **OpenSSF Scorecard** — automated supply-chain posture analysis covering ~18 dimensions (branch protection, signed releases, pinned dependencies, dangerous workflow patterns, etc.). Score and per-check findings published at https://scorecard.dev/viewer/?uri=github.com/OpenSecOps-Org/{{COMPONENT_NAME}}.
+- **Daily-scan workflow status** — GitHub Actions workflow run status for the daily CVE scan (see §4 third bullet). A passing badge means the most recent scheduled scan exited clean against the published locks.
+
+Both badges are externally readable without OpenSecOps cooperation. Combined with the Sigstore-signed release artefacts (§11) and the SLSA Build L1 in-toto provenance (§9), they constitute the customer-facing supply-chain assurance set.
+
+### 5.1 Verifiability decomposition
+
+The release artefacts (locks, per-function SBOMs, aggregate SBOM, evidence tarball, Sigstore signature bundles, SLSA in-toto provenance document) give the customer four distinct *kinds* of independent verification. Conflating them into a single "is this verifiable?" sentence would invite a careful reviewer to notice the elision; the four-way breakdown below names the mechanism that closes each.
+
+All four categories are **independently verifiable today, no further release needed.**
+
+1. **Hash integrity + per-function SBOM determinism.** `pip download --require-hashes -r requirements.txt` against any published lock downloads each pinned wheel from PyPI and verifies its SHA-256 against the recorded hash. A mismatch indicates either tampering on the path PyPI → customer, or a stale lock; in either case the customer's `sam build` would also reject. Re-running `compile-requirements.sh` against the same `requirements.txt` produces a byte-identical `requirements.cdx.json` (the UUIDv5 serialNumber is derived from `sha256(lock contents)` and the timestamp is pinned to a fixed epoch); the same property holds for the per-function `requirements.provenance.json` baselines. A reviewer who pulls the evidence tarball can regenerate every file in it and compare bit-for-bit.
+
+2. **Substitution-in-transit (Sigstore).** Every release artefact is signed via Sigstore keyless OIDC, with the `.bundle` file (cert + signature + Rekor transparency-log entry) attached as an additional release asset. `cosign verify-blob --bundle <artefact>.bundle <artefact>` (see §11 for the full invocation including identity and issuer) attests that the bytes the customer downloaded came from an authorised release identity recorded in Sigstore's Rekor public transparency log. Closes the question "did these bytes actually come from OpenSecOps, or did something between OpenSecOps and me substitute them?".
+
+3. **Gate-derivation reproducibility (indirect closure of the gate's drift/hash-integrity outputs).** A second machine recompiling from the committed `.in` files with the `# uv-compiled-at:` timestamp recorded in each `requirements.txt` passed as `--exclude-newer`, a clean `uv` cache, and the pinned `uv` version produces bit-identical lock bytes. The release-time gate runs this verification on every publish via `_check-requirements.sh --reproducible`. If the lock is reproducible by anyone with the inputs, the gate's "is the lock well-formed and authentic" question is answered without trusting the maintainer's process.
+
+4. **Gate-execution attestation (direct closure).** A SLSA Build L1 in-toto provenance document is generated alongside every release, declaring the build steps that ran (`_check-requirements.sh --reproducible`, `_aggregate-sbom.sh`, `_bundle-evidence.sh`, `cosign sign-blob`) and the toolchain versions (`uv`, `cosign`, `python`) that produced the artefacts. The provenance document is itself Sigstore-signed and attached as a release asset (`<component>-<version>-provenance.intoto.json` + `.bundle`). Direct answer to "did `./publish`'s gate actually run, or did the maintainer skip it and sign anyway?" — by naming the build steps in a signed attestation. Category 3 closes the same question *indirectly* via reproducibility; category 4 closes it *directly* via the named-step provenance.
+
+The categorisation is mechanism-attributed: each of the four properties has its own primary verification mechanism (hash-and-determinism, Sigstore, reproducibility, in-toto provenance). A customer choosing which to apply for a given assurance question can pick the most appropriate one rather than having to run all four.
+
+## 6. Governance
+
+OpenSecOps follows the *cathedral* model in [Eric S. Raymond's sense](https://en.wikipedia.org/wiki/The_Cathedral_and_the_Bazaar): a small core team curates the codebase. The source is public for transparency, customer verification, and security review. It is not an invitation to contribute code.
+
+External pull requests are not accepted on any OpenSecOps repository. Forks under MPL-2.0 are of course permitted by the license.
+
+Vulnerability *reports* are the explicit carve-out: they are welcomed from anyone (§2) and reporters receive named credit. The reporter/contributor distinction is intentional: anyone can tell us something is broken; only the core team writes the fix.
+
+Release-signing identities are core-team members; the set of valid signing identities is published in §7 once Sigstore signing ships.
+
+## 7. Valid release-signing identities
+
+When verifying release artefacts via `cosign verify-blob` (§11), customers must accept signatures issued to one of the following OIDC identities:
+
+| Identity                  | OIDC issuer                      | Role                |
+| ------------------------- | -------------------------------- | ------------------- |
+| `peter@peterbengtson.com` | `https://github.com/login/oauth` | Maintainer (Peter)  |
+
+The cathedral governance model in §6 means signing identities correspond to individual core-team members, not shared role mailboxes. Each listed identity is a verified email on the GitHub account that authenticates with Sigstore at sign time; the OIDC issuer is the upstream provider GitHub uses for browser-OAuth sign-in, recorded by Sigstore's Fulcio in the cert's extension and by Rekor in the transparency log per signing event.
+
+Additional identities will be appended to this table as the core team expands. Existing identities remain listed as long as releases signed with them are in support, so historical verification continues to work after a rotation. Sigstore's public transparency log at https://search.sigstore.dev/ provides an externally-auditable record of every signing event against the listed identities.
+
+## 8. Maturity claims (S2C2F)
+
+This component implements **S2C2F L1 + L2 baseline plus the locally-runnable subset of L3**:
+
+- **L1 + L2 baseline**: hand-edited abstract dependency spec; hash-verified resolved lock; release-time CVE scan; explicit acknowledged-and-deferred override (§12); deterministic regeneration of the lock from the same `.in` files plus the same `uv` version.
+- **L3 subset**: OSSF malicious-packages feed gating at release time; direct-dependency PyPI provenance advisory at release time. Both gates run uniformly against any converted component (the same gates fire wherever hashed locks exist).
+
+The maturity claim is honest about scope. Where a control requires write-capable CI infrastructure (signed-from-CI rebuilds, hermetic builds, automated update bots, auto-merge on green), it is **explicitly out of scope** for OpenSecOps and we do not claim it. The same applies to all S2C2F L4 controls (rebuilding OSS on trusted infrastructure, signing rebuilt OSS, implementing upstream fixes locally).
+
+This claim is uniform across every converted OpenSecOps component.
+
+## 9. SLSA level
+
+This component meets **SLSA Build Level 1** under [SLSA v1.2](https://slsa.dev/spec/v1.2/levels). Provenance is generated, signed, and distributed alongside every release. The provenance document is an [in-toto Statement v1](https://github.com/in-toto/attestation/blob/main/spec/v1/statement.md) carrying a [SLSA Provenance v1](https://slsa.dev/spec/v1.2/provenance) predicate. It lists the actual build steps that ran (`_check-requirements.sh --reproducible`, `_aggregate-sbom.sh`, `_bundle-evidence.sh`, `cosign sign-blob`) and the exact toolchain versions (`uv`, `cosign`, `python`) so the customer has a direct, signed answer to "did `./publish`'s release gate actually fire?" — not an indirect inference from reproducibility.
+
+In addition to the L1 claim, the following **L2-adjacent controls** are documented and operational on every release:
+
+- **Sigstore signing of every release artefact** — keyless, ephemeral-cert, transparency-logged in Rekor. See §11 for the verification command.
+- **Hash-pinned deterministic dependency resolution** — every direct and transitive dependency is hash-pinned via `uv pip compile --generate-hashes`; `pip` enforces SHA-256 hashes at install time inside `sam build`, and the release gate (§4) re-verifies them against PyPI before any artefact ships.
+- **Reproducibility verification on a second machine** — every committed `requirements.txt` carries a `# uv-compiled-at:` timestamp; any second machine recompiling from the `.in` files plus the pinned `uv` version plus a clean `uv` cache plus the recorded timestamp passed as `--exclude-newer` produces bit-identical lock bytes. The release-time gate runs this verification on every publish via `_check-requirements.sh --reproducible`.
+
+SLSA Build **L2** explicitly requires a hosted build platform that generates and signs the provenance. The maintainer-laptop release model documented in §6 cannot meet that bar without adding release-path CI, which is out of scope per OpenSecOps's posture (no release-path CI; signing happens on the maintainer machine with the maintainer's identity, see §7). Should L2 be required by a specific enterprise customer, the path forward is a scoped, read-only, signing-capable hosted build runner — that is a deliberate future decision, not the current posture.
+
+The L1 claim with the named L2-adjacent controls is uniform across every converted OpenSecOps component.
+
+## 10. Software Bill of Materials (SBOM)
+
+Three release assets are attached to every GitHub release of this component on the public OpenSecOps remote, each accompanied by a Sigstore signature bundle:
+
+**Aggregate component-level SBOM** — one summary file (CycloneDX 1.6, gzip uncompressed JSON), the union of every per-function SBOM in the release. This is what intake reviewers and most SBOM tooling consume:
+
+{{SBOM_LOCATION}}
+
+**Per-function evidence tarball** — `<COMPONENT>-<VERSION>-evidence.tar.gz`, deterministically built from every `requirements.cdx.json` and `requirements.provenance.json` in the source tree. This is the deep-audit witness set: one CycloneDX SBOM per Lambda function plus its committed PyPI publisher-provenance baseline. The aggregate is one file summarising the union; the evidence tarball carries the per-function records that produced it (typically multiple files per Lambda function across the component). Reviewers performing CycloneDX-mature deep audit should pull the tarball; reviewers needing only the inventory can stop at the aggregate.
+
+The per-function evidence files are also visible in the source tree at the canonical paths `**/requirements.cdx.json` and `**/requirements.provenance.json` next to each `requirements.in`. Customers who clone or browse the source can verify any release's evidence tarball against the corresponding source-tree files at the matching tag — the bundle is byte-deterministic and the source files are directly comparable.
+
+**Union semantics for duplicate components** — the aggregate SBOM may list the same package at multiple versions (for example `botocore` at both 1.42.94 and 1.42.97). This is not an error. Each Lambda function resolves its own dependency graph independently from `requirements.in`, so transitive resolutions can legitimately differ across functions. Collapsing duplicates to "highest wins" would actively misrepresent what is deployed, so the aggregate preserves every distinct version found in any function's resolved lock. The per-function SBOMs (in the evidence tarball) carry the corresponding function-by-function attribution.
+
+**SLSA Build L1 in-toto provenance** — `<COMPONENT>-<VERSION>-provenance.intoto.json`, an in-toto Statement v1 with a SLSA Provenance v1 predicate, naming the build steps and toolchain versions that produced the SBOM and evidence tarball. See §9 for the level claim and L2-adjacent controls; see §11 for verification.
+
+Each of the three release-asset files above is accompanied by a Sigstore signature bundle (`.bundle` file extension; cert + signature + Rekor transparency-log entry, self-contained for verification with `cosign verify-blob`).
+
+## 11. Verifying release artefacts
+
+Every release artefact attached to a GitHub Release of this component (the aggregate SBOM, the evidence tarball, and the SLSA provenance document) is signed via Sigstore keyless OIDC. Each artefact ships alongside a self-contained `<artefact>.bundle` file (cert + signature + Rekor transparency-log entry).
+
+To verify an artefact, install [cosign](https://docs.sigstore.dev/cosign/installation/) and run:
+
+```bash
+cosign verify-blob \
+  --certificate-identity     peter@peterbengtson.com \
+  --certificate-oidc-issuer  https://github.com/login/oauth \
+  --bundle                   <artefact>.bundle \
+                             <artefact>
+```
+
+Replace `<artefact>` with the actual release-asset filename (e.g. `{{COMPONENT_NAME}}-vX.Y.Z-sbom.cdx.json`). A successful verification prints `Verified OK`. Any other output indicates the bytes do not match what OpenSecOps published, the signature was made by an identity not listed in §7, or the Rekor transparency-log entry has been tampered with.
+
+If the core team has rotated signing identities and a release was signed with an older identity, replace the `--certificate-identity` value with the identity from §7 that matches that release. The Rekor transparency log at https://search.sigstore.dev/ records which identity signed each entry; if you are unsure which identity to use, search there by the artefact's SHA-256 digest.
+
+For the SLSA provenance document specifically, after verifying the signature, the JSON itself can be inspected with `jq` to read the build-time toolchain versions, the git commit SHA the release was built from, and the named build steps under `predicate.runDetails.byproducts`.
+
+Customers who want to verify the lock files reproduce bit-identically from the released abstract spec should follow the recipe in [the Documentation supply-chain page](https://github.com/OpenSecOps-Org/Documentation/blob/main/docs/security/supply-chain.md) §9.
+
+## 12. Acknowledged-and-deferred CVEs
+
+This is the override mechanism for the release gate: any CVE listed here is permitted to ship, on the documented rationale, until the resolution date.
+
+{{ACKNOWLEDGED_CVES}}
+
+Each entry, when present, contains: CVE ID, affected package, date acknowledged, reason (development-only dependency, contested advisory, fix pending upstream, no exploitable code path, etc.), and expected resolution.
+
+Adding an entry is a deliberate maintainer action, reviewed at release time. Entries are removed as soon as the underlying issue is fixed; the audit trail remains in `git log`.
+
+## 13. "Am I affected?" recipe
+
+To determine whether a specific CVE applies to a deployment of this component, run the following against the deployed `requirements.txt` files inside the SAM build artefacts:
+
+```bash
+grep -rE '<package>==<vulnerable-version-pattern>' path/to/.aws-sam/build
+```
+
+Worked example — checking exposure to a hypothetical urllib3 CVE that affects all versions before 2.6.3:
+
+```bash
+grep -rE '^urllib3==(0\.|1\.|2\.[0-5]\.|2\.6\.[0-2])' .aws-sam/build/
+```
+
+A non-empty result means at least one Lambda function bundle contains the vulnerable version. Cross-reference with §12 to determine whether the exposure is a release-gate failure that escaped (file a bug) or an acknowledged-and-deferred entry (consult the resolution date). Per §1, the remediation when exposed is to upgrade to the current release.
+
+## 14. Authoritative supply-chain documentation
+
+For the cross-component customer-facing supply-chain page — covering supply-chain integrity, CVE response, SBOM artefacts, release verification, and an intake-checklist crosswalk for FOSS-intake reviewers, security officers, and engineers — see:
+
+**[OpenSecOps Supply-Chain Security and CVE Response](https://github.com/OpenSecOps-Org/Documentation/blob/main/docs/security/supply-chain.md)**
+
+That document is the authoritative cross-component reference; the per-component sections above describe how the project-wide posture applies to **{{COMPONENT_NAME}}** specifically.
+
+---
+
+*This document is generated from `SECURITY.md.template` and `.security-config.toml` by `_generate-security-md.sh`. Edit those files, not this one. See the comment at the top of `SECURITY.md.template` for placeholder semantics.*
