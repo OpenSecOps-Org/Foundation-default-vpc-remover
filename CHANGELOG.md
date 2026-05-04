@@ -1,5 +1,9 @@
 # Change Log
 
+## v1.2.1
+
+- `SECURITY.md` and `README` updated re: OpenSSF Scorecard publication status. See [supply-chain documentation](https://github.com/OpenSecOps-Org/Documentation/blob/main/docs/security/supply-chain.md) §5.5.
+
 ## v1.2.0
     * Converted to OpenSecOps supply-chain framework: hash-pinned dependencies, signed releases, daily CVE scan, Scorecard. See `SECURITY.md`.
     * `boto3` pinned to `1.42.94` (was `1.28.33`) per project-wide pin policy.
