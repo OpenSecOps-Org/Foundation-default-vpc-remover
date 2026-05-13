@@ -1,5 +1,8 @@
 # Change Log
 
+## v1.2.4
+    * Carries Installer v3.0.11 customer-side release verification. `scripts/deploy.py` now verifies the Sigstore signature of every released artefact (SBOM, evidence, SLSA provenance) against the maintainer identity (`peter@peterbengtson.com` via `https://github.com/login/oauth`) before any `sam build` / `cfn deploy` / script execution; the shared verifier lives in `scripts/_verify_release.py` (distributed by `refresh`). Tampered artefacts, wrong signer, or missing bundles fail the deploy. New `--unsafe-untagged` flag on `./deploy` for emergency overrides (loud red audit banner). No code changes in this component; the verifier rides along with `refresh`-distributed scripts.
+
 ## v1.2.3
     * Security: bump `urllib3` floor to `>=2.7.0` in `boto3.in` to remediate CVE-2026-44431 and CVE-2026-44432 (both affect urllib3 ≤ 2.6.3, fixed in 2.7.0). The pinned `boto3==1.42.94` previously resolved urllib3 transitively to 2.6.3; the new floor forces resolution to 2.7.0 across every Lambda lockfile. No code changes; recompiled locks only.
 
