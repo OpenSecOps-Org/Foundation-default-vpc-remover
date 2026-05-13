@@ -1,6 +1,6 @@
 # Default VPC Remover
 
-[![Daily CVE scan](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml) [![OpenSSF Scorecard](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/scorecard.yml/badge.svg)](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/scorecard.yml)
+[![Daily CVE scan](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml/badge.svg)](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/daily-scan.yml) [![OpenSSF Scorecard](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/scorecard.yml/badge.svg)](https://github.com/OpenSecOps-Org/Foundation-default-vpc-remover/actions/workflows/scorecard.yml) [![OpenSSF Best Practices](https://www.bestpractices.dev/projects/12827/badge)](https://www.bestpractices.dev/projects/12827)
 
 The default VPC created for a new account behaves slightly differently from user-created VPCs: amongst other things, their security groups are fully open. Therefore, we must remove all default VPCs in all regions for a newly created account.
 
