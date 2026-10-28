@@ -2,6 +2,7 @@ import os
 import json
 import botocore
 import boto3
+from aws_errors import is_transient, transient_aws_errors
 
 
 org_client = boto3.client('organizations')
@@ -11,6 +12,9 @@ ec2_client = boto3.client('ec2')
 ROLE_TO_ASSUME = os.environ['ROLE_TO_ASSUME']
 
 
+# A delete that fails is logged and the removal continues, unless the failure is transient: then the
+# state machine retries the whole account, which re-describes what is left.
+@transient_aws_errors
 def lambda_handler(data, _context):
     print("Data: ", data)
 
@@ -62,10 +66,7 @@ def delete_igw(ec2, vpc_id, dryrun=False):
             }
         ]
     }
-    try:
-        igw = ec2.describe_internet_gateways(**args)['InternetGateways']
-    except botocore.exceptions.ClientError as exc:
-        print(exc.response['Error']['Message'])
+    igw = ec2.describe_internet_gateways(**args)['InternetGateways']
     if igw:
         igw_id = igw[0]['InternetGatewayId']
         try:
@@ -74,20 +75,21 @@ def delete_igw(ec2, vpc_id, dryrun=False):
                 ec2.detach_internet_gateway(
                     InternetGatewayId=igw_id, VpcId=vpc_id)
         except botocore.exceptions.ClientError as exc:
+            if is_transient(exc):
+                raise
             print(exc.response['Error']['Message'])
         try:
             print("  Deleting " + str(igw_id))
             if not dryrun:
                 ec2.delete_internet_gateway(InternetGatewayId=igw_id)
         except botocore.exceptions.ClientError as exc:
+            if is_transient(exc):
+                raise
             print(exc.response['Error']['Message'])
 
 
 def delete_subs(ec2, args, dryrun=False):
-    try:
-        subs = ec2.describe_subnets(**args)['Subnets']
-    except botocore.exceptions.ClientError as exc:
-        print(exc.response['Error']['Message'])
+    subs = ec2.describe_subnets(**args)['Subnets']
     if subs:
         for sub in subs:
             sub_id = sub['SubnetId']
@@ -96,14 +98,13 @@ def delete_subs(ec2, args, dryrun=False):
                 if not dryrun:
                     ec2.delete_subnet(SubnetId=sub_id)
             except botocore.exceptions.ClientError as exc:
+                if is_transient(exc):
+                    raise
                 print(exc.response['Error']['Message'])
 
 
 def delete_rtbs(ec2, args, dryrun=False):
-    try:
-        rtbs = ec2.describe_route_tables(**args)['RouteTables']
-    except botocore.exceptions.ClientError as exc:
-        print(exc.response['Error']['Message'])
+    rtbs = ec2.describe_route_tables(**args)['RouteTables']
     if rtbs:
         for rtb in rtbs:
             main = 'false'
@@ -117,14 +118,13 @@ def delete_rtbs(ec2, args, dryrun=False):
                 if not dryrun:
                     ec2.delete_route_table(RouteTableId=rtb_id)
             except botocore.exceptions.ClientError as exc:
+                if is_transient(exc):
+                    raise
                 print(exc.response['Error']['Message'])
 
 
 def delete_acls(ec2, args, dryrun=False):
-    try:
-        acls = ec2.describe_network_acls(**args)['NetworkAcls']
-    except botocore.exceptions.ClientError as exc:
-        print(exc.response['Error']['Message'])
+    acls = ec2.describe_network_acls(**args)['NetworkAcls']
     if acls:
         for acl in acls:
             default = acl['IsDefault']
@@ -136,14 +136,13 @@ def delete_acls(ec2, args, dryrun=False):
                 if not dryrun:
                     ec2.delete_network_acl(NetworkAclId=acl_id)
             except botocore.exceptions.ClientError as exc:
+                if is_transient(exc):
+                    raise
                 print(exc.response['Error']['Message'])
 
 
 def delete_sgps(ec2, args, dryrun=False):
-    try:
-        sgps = ec2.describe_security_groups(**args)['SecurityGroups']
-    except botocore.exceptions.ClientError as exc:
-        print(exc.response['Error']['Message'])
+    sgps = ec2.describe_security_groups(**args)['SecurityGroups']
     if sgps:
         for sgp in sgps:
             default = sgp['GroupName']
@@ -155,6 +154,8 @@ def delete_sgps(ec2, args, dryrun=False):
                 if not dryrun:
                     ec2.delete_security_group(GroupId=sg_id)
             except botocore.exceptions.ClientError as exc:
+                if is_transient(exc):
+                    raise
                 print(exc.response['Error']['Message'])
 
 
@@ -164,6 +165,8 @@ def delete_vpc(ec2, vpc_id, region, dryrun=False):
         if not dryrun:
             ec2.delete_vpc(VpcId=vpc_id)
     except botocore.exceptions.ClientError as exc:
+        if is_transient(exc):
+            raise
         print(exc.response['Error']['Message'])
     else:
         print('VPC {} has been deleted from the {} region.'.format(vpc_id, region))

@@ -1,5 +1,10 @@
 # Change Log
 
+## v1.3.0
+    * Retries are now driven by named errors. The Lambda raises throttling, AWS-side failures (5xx) and connection problems as `AWSTransientError`, keeping the original error as its cause, through the `aws_errors` module (distributed by the Installer, packaged in the new `AwsErrorsLayer`). The state machine retries `AWSTransientError` and the Lambda service errors: 5 seconds, doubling, at most 300 seconds apart, full jitter, 20 attempts. It no longer retries on `States.TaskFailed`, which matched every error, permanent ones included.
+    * Fix: throttling during VPC removal was swallowed. Every EC2 call caught its own errors, printed them and continued; a throttled describe left its result unset, so the next line failed with an `UnboundLocalError`. Throttling is now retried, and a retry re-describes whatever is left of the default VPC. A delete refused for another reason (e.g. a dependency) is still logged and the removal continues; a describe refused for another reason now fails with its own error.
+    * New offline unit tests for the retry rules and the error handling.
+
 ## v1.2.6
     * Security: bump `urllib3` floor to `>=2.8.0` in `boto3.in` (distributed from canonical `Installer/templates/boto3.in`) to remediate CVE-2026-97687 (HTTPS-proxy TLS configuration ignored or overridden), CVE-2026-97688 (infinite loop on chunked Deflate responses) and CVE-2026-97689 (unbounded chunk-size-line buffering). All three are fixed in urllib3 2.8.0; the previous `>=2.7.0` floor resolved to 2.7.0, which is affected by all three. Locks recompiled with `--upgrade`; other transitive deps refreshed to their latest in-range versions as a side effect (no code or behaviour change).
 
